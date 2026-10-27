@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aurora Borealis</title>
+<style>
+  :root{
+    --radius:12px; --radius-sm:8px;
+    --border-color:rgba(255,255,255,.14);
+    --text-primary:#eef1fb; --text-secondary:#98a3c0; --text-muted:#8b93ad;
+    --bg:#07070d; --panel-bg:rgba(14,16,28,.82);
+    --bg-card:rgba(20,22,38,.72); --bg-secondary:rgba(255,255,255,.05);
+    --accent-color:#7c5cff; --accent-purple:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text-primary);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;}
+  body{display:flex;flex-direction:column;}
+  input[type=range]{accent-color:#7dd3fc;}
+  button{font:inherit;cursor:pointer;}
+  .btn-primary,.btn-secondary{
+    border-radius:8px;border:1px solid var(--border-color);padding:6px 12px;
+    background:rgba(255,255,255,.06);color:var(--text-primary);}
+  .btn-primary{background:rgba(125,211,252,.16);border-color:rgba(125,211,252,.4);}
+  .btn-primary:hover,.btn-secondary:hover{background:rgba(255,255,255,.13);}
+
+.ab-container { position: relative; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); overflow: hidden; }
+.ab-container canvas { display: block; width: 100%; height: 520px; background: #020617; }
+.ab-hint { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); font-size: 0.8rem; color: var(--text-muted); pointer-events: none; opacity: 0.8; }
+.ab-hint.hidden { opacity: 0; }
+.ab-controls {  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; padding: 1rem 1.25rem; background: rgba(15,23,42,0.6); border-top: 1px solid var(--border-color); position: relative; z-index: 10; }
+  .ab-controls button { white-space: nowrap;  }
+.ab-control-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.ab-control-group label { font-size: 0.75rem; color: var(--text-secondary); font-weight: 600; }
+.ab-control-group input[type="range"] { width: 100%; accent-color: var(--accent-blue, #38bdf8); }
+.ab-control-group span { font-size: 0.75rem; color: var(--text-muted); font-family: monospace; }
+.ab-btns { display: flex; gap: 0.5rem; align-items: flex-end; }
+.ab-container.is-fs { width: 100vw; height: 100vh; border-radius: 0; }
+.ab-container.is-fs canvas { height: 100vh; }
+.ab-container.is-fs .ab-controls { display: none; }
+.ab-container.is-fs .ab-hint { display: none;
+ }
+@media (max-width: 640px) { .ab-container canvas { height: 360px; } .ab-controls { grid-template-columns: 1fr; } }
+</style>
+<style>ab-container{height:100vh!important;width:100vw!important;border-radius:0!important;}ab-container canvas{width:100%!important;height:100%!important;display:block;}</style>
+</head>
+<body>
+<div class="ab-container">
+  <canvas id="ab-canvas"></canvas>
+  <div class="ab-hint" id="ab-hint">Aurora flowing gently</div>
+  <div class="ab-controls">
+    <div class="ab-control-group">
+      <label>Band Count</label>
+      <input type="range" id="ab-bands" min="2" max="8" value="5" />
+      <span id="ab-bands-val">5</span>
+    </div>
+    <div class="ab-control-group">
+      <label>Flow Speed</label>
+      <input type="range" id="ab-speed" min="1" max="10" value="4" />
+      <span id="ab-speed-val">4</span>
+    </div>
+    <div class="ab-control-group">
+      <label>Color Theme</label>
+      <input type="range" id="ab-theme" min="0" max="2" value="0" />
+      <span id="ab-theme-val">Green</span>
+    </div>
+    <div class="ab-control-group">
+      <label>Opacity</label>
+      <input type="range" id="ab-opacity" min="3" max="10" value="6" />
+      <span id="ab-opacity-val">6</span>
+    </div>
+    <div class="ab-btns">
+      <button class="btn-primary" id="ab-pause">Pause</button>
+      <button class="btn-secondary" id="ab-fullscreen">Fullscreen</button>
+      <button class="btn-secondary" id="ab-demo">Auto Demo</button>
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+  const isZh = document.documentElement.lang === 'zh';
+  const canvas = document.getElementById('ab-canvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let W, H;
+  function resize() {
+    const wrap = canvas.parentElement;
+    W = wrap.clientWidth;
+    H = wrap.clientHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+  resize();
+
+  let bandCount = 5;
+  let flowSpeed = 4;
+  let theme = 0;
+  let opacity = 6;
+  let running = true;
+  let paused = false;
+  let animId = null;
+
+  const themes = [
+    ['#4ade80', '#22c55e', '#16a34a', '#86efac'],
+    ['#c084fc', '#a855f7', '#7e22ce', '#d8b4fe'],
+    ['#f87171', '#ef4444', '#dc2626', '#fca5a5']
+  ];
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function drawStars() {
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 80; i++) {
+      const x = (Math.sin(i * 12.9898) * 43758.5453) % 1;
+      const y = (Math.cos(i * 78.233) * 43758.5453) % 1;
+      ctx.fillStyle = `rgba(255,255,255,${0.3 + Math.random()*0.5})`;
+      ctx.beginPath();
+      ctx.arc(Math.abs(x)*W, Math.abs(y)*H*0.6, Math.random()*1.5, 0, Math.PI*2);
+      ctx.fill(); }
+  }
+
+  function drawAurora(time) {
+    const cols = themes[theme];
+    const baseAlpha = opacity * 0.06;
+    for (let b = 0; b < bandCount; b++) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const color = cols[b % cols.length];
+      const yBase = H * (0.15 + b * 0.12);
+      const gradient = ctx.createLinearGradient(0, yBase - 60, 0, yBase + 120);
+      gradient.addColorStop(0, 'rgba(0,0,0,0)');
+      gradient.addColorStop(0.5, color + Math.floor(baseAlpha*255).toString(16).padStart(2,'0'));
+      gradient.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(0, yBase);
+      for (let x = 0; x <= W; x += 5) {
+        const y = yBase + Math.sin(x * 0.003 + time * 0.0005 * flowSpeed + b * 2) * 40
+                  + Math.sin(x * 0.007 + time * 0.0003 * flowSpeed + b) * 20
+                  + Math.sin(x * 0.0015 + time * 0.0002 * flowSpeed) * 60;
+        ctx.lineTo(x, y); }
+      ctx.lineTo(W, H);
+      ctx.lineTo(0, H);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore(); }
+  }
+
+  function loop() {
+    if (!running) return;
+    if (!paused) {
+      drawStars();
+      drawAurora(Date.now()); }
+    animId = requestAnimationFrame(loop); }
+  animId = requestAnimationFrame(loop);
+
+  const elBands = document.getElementById('ab-bands');
+  const elBandsVal = document.getElementById('ab-bands-val');
+  const elSpeed = document.getElementById('ab-speed');
+  const elSpeedVal = document.getElementById('ab-speed-val');
+  const elTheme = document.getElementById('ab-theme');
+  const elThemeVal = document.getElementById('ab-theme-val');
+  const elOpacity = document.getElementById('ab-opacity');
+  const elOpacityVal = document.getElementById('ab-opacity-val');
+  const elPause = document.getElementById('ab-pause');
+
+  if (elBands) elBands.addEventListener('input', (e) => { bandCount = parseInt(e.target.value); elBandsVal.textContent = bandCount; });
+  if (elSpeed) elSpeed.addEventListener('input', (e) => { flowSpeed = parseInt(e.target.value); elSpeedVal.textContent = flowSpeed; });
+  if (elOpacity) elOpacity.addEventListener('input', (e) => { opacity = parseInt(e.target.value); elOpacityVal.textContent = opacity; });
+  if (elTheme) elTheme.addEventListener('input', (e) => {
+    theme = parseInt(e.target.value);
+    const names = isZh ? ['绿色', '紫色', '红色'] : ['Green', 'Purple', 'Red'];
+    elThemeVal.textContent = names[theme]; });
+  if (elPause) elPause.addEventListener('click', () => { paused = !paused; elPause.textContent = paused ? ("Resume") : ("Pause"); });
+
+  var container = canvas.closest('.ab-container');
+  var elFullscreen = document.getElementById('ab-fullscreen');
+  if (elFullscreen) {
+    elFullscreen.addEventListener('click', function() {
+      if (!document.fullscreenElement) { container.requestFullscreen().catch(function(){}); }
+      else { document.exitFullscreen(); }
+    });
+    document.addEventListener('fullscreenchange', function() {
+      elFullscreen.textContent = document.fullscreenElement ? ("Exit") : ("Fullscreen");
+      requestAnimationFrame(function() { resize(); }); }); }
+
+  var elDemo = document.getElementById('ab-demo');
+  var demoTimer = null, demoActive = false;
+  function stopDemo() { demoActive = false; if (demoTimer) { clearInterval(demoTimer); demoTimer = null; } if (elDemo) elDemo.textContent = "Auto Demo"; }
+  if (elDemo) {
+    elDemo.addEventListener('click', function() {
+      if (demoActive) { stopDemo(); return; }
+      demoActive = true; elDemo.textContent = "Stop Demo";
+      demoTimer = setInterval(() => {
+        theme = (theme + 1) % 3;
+        if (elTheme) { elTheme.value = theme; const names = isZh ? ['绿色', '紫色', '红色'] : ['Green', 'Purple', 'Red']; elThemeVal.textContent = names[theme]; }
+      }, 2000);
+      setTimeout(stopDemo, 15000); }); }
+
+  window.addEventListener('resize', resize);
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) { running = false; if (animId) cancelAnimationFrame(animId); }
+    else { running = true; animId = requestAnimationFrame(loop); }
+  }); })();
+</script>
+<script>(function(){var r=document.querySelector('.ab-container');if(r)r.classList.add('is-fs');})();</script>
+</body>
+</html>

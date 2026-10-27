@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Constellation</title>
+<style>
+  :root{
+    --radius:12px; --radius-sm:8px;
+    --border-color:rgba(255,255,255,.14);
+    --text-primary:#eef1fb; --text-secondary:#98a3c0; --text-muted:#8b93ad;
+    --bg:#07070d; --panel-bg:rgba(14,16,28,.82);
+    --bg-card:rgba(20,22,38,.72); --bg-secondary:rgba(255,255,255,.05);
+    --accent-color:#7c5cff; --accent-purple:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text-primary);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;}
+  body{display:flex;flex-direction:column;}
+  input[type=range]{accent-color:#7dd3fc;}
+  button{font:inherit;cursor:pointer;}
+  .btn-primary,.btn-secondary{
+    border-radius:8px;border:1px solid var(--border-color);padding:6px 12px;
+    background:rgba(255,255,255,.06);color:var(--text-primary);}
+  .btn-primary{background:rgba(125,211,252,.16);border-color:rgba(125,211,252,.4);}
+  .btn-primary:hover,.btn-secondary:hover{background:rgba(255,255,255,.13);}
+
+.constellation-wrap {
+  position: relative;
+  width: 100%;
+  height: 520px;
+  background: radial-gradient(ellipse at center, #0a0a1a 0%, #000010 100%);
+  border-radius: var(--radius);
+  overflow: hidden; }
+.cs-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair; }
+.cs-panel {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  background: rgba(10, 10, 26, 0.75);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  z-index: 10; }
+.cs-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center; }
+.cs-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px; }
+.cs-field-label { white-space: nowrap; }
+.cs-field input[type="range"] { width: 80px; }
+.cs-value {
+  min-width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary); }
+@media (max-width: 640px) {
+  .constellation-wrap { height: 360px; }
+  .cs-field input[type="range"] { width: 55px; }
+  .cs-field { font-size: 12px; }
+}
+.constellation-wrap.is-fs {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0; }
+.constellation-wrap.is-fs .cs-canvas {
+  height: 100%; }
+.constellation-wrap.is-fs .cs-panel {
+  display: none; }
+</style>
+<style>constellation-wrap{height:100vh!important;width:100vw!important;border-radius:0!important;}constellation-wrap canvas{width:100%!important;height:100%!important;display:block;}</style>
+</head>
+<body>
+<div class="constellation-wrap">
+  <canvas id="cs-canvas" class="cs-canvas"></canvas>
+
+  <div class="cs-panel">
+    <div class="cs-row">
+      <div class="cs-field">
+        <span class="cs-field-label">Points</span>
+        <input type="range" id="cs-count" min="30" max="200" value="100" />
+        <span class="cs-value" id="cs-count-val">100</span>
+      </div>
+      <div class="cs-field">
+        <span class="cs-field-label">Distance</span>
+        <input type="range" id="cs-dist" min="50" max="200" value="120" />
+        <span class="cs-value" id="cs-dist-val">120</span>
+      </div>
+      <div class="cs-field">
+        <span class="cs-field-label">Speed</span>
+        <input type="range" id="cs-speed" min="1" max="10" value="4" />
+        <span class="cs-value" id="cs-speed-val">4</span>
+      </div>
+      <button class="btn-primary" id="cs-pause">Pause</button>
+      <button class="btn-secondary" id="cs-fullscreen">Fullscreen</button>
+      <button class="btn-secondary" id="cs-demo">Auto Demo</button>
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+  const isZh = document.documentElement.lang === 'zh';
+
+  const canvas = document.getElementById('cs-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const wrap = canvas.closest('.constellation-wrap');
+
+  let W, H, dpr;
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = wrap.getBoundingClientRect();
+    W = Math.floor(rect.width);
+    H = Math.floor(rect.height);
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+  resize();
+  window.addEventListener('resize', resize);
+
+  let pointCount = 100;
+  let connectDist = 120;
+  let moveSpeed = 4;
+  let running = true;
+  let paused = false;
+
+  let mouseX = -999, mouseY = -999;
+  let mouseActive = false;
+  let mouseMode = 'attract'; // 'attract' or 'repel'
+
+  const points = [];
+  const starColors = ['#ffffff', '#aaccff', '#ffddaa', '#ccffff', '#ffccff'];
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  class Point {
+    constructor() {
+      this.x = rand(0, W);
+      this.y = rand(0, H);
+      this.vx = rand(-0.5, 0.5) * (moveSpeed / 4);
+      this.vy = rand(-0.5, 0.5) * (moveSpeed / 4);
+      this.radius = rand(0.5, 2.5);
+      this.color = pick(starColors);
+      this.twinkleSpeed = rand(1, 3);
+      this.twinkleOffset = rand(0, Math.PI * 2);
+      this.baseAlpha = rand(0.5, 1); }
+    update(time) {
+      // 鼠标交互
+      if (mouseActive) {
+        const dx = mouseX - this.x;
+        const dy = mouseY - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 200 && dist > 1) {
+          const force = (200 - dist) / 200 * 0.3;
+          if (mouseMode === 'attract') {
+            this.vx += dx / dist * force;
+            this.vy += dy / dist * force; } else {
+            this.vx -= dx / dist * force;
+            this.vy -= dy / dist * force; }
+        }
+      }
+
+      this.x += this.vx;
+      this.y += this.vy;
+
+      // 阻尼
+      this.vx *= 0.99;
+      this.vy *= 0.99;
+
+      // 保持基础速度
+      const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+      const baseSpeed = 0.3 * (moveSpeed / 4);
+      if (speed < baseSpeed) {
+        this.vx *= baseSpeed / (speed || 1);
+        this.vy *= baseSpeed / (speed || 1); }
+      if (speed > 2) {
+        this.vx *= 0.95;
+        this.vy *= 0.95; }
+
+      // 边界环绕
+      if (this.x < -10) this.x = W + 10;
+      if (this.x > W + 10) this.x = -10;
+      if (this.y < -10) this.y = H + 10;
+      if (this.y > H + 10) this.y = -10; }
+    getAlpha(time) {
+      return this.baseAlpha * (0.7 + 0.3 * Math.sin(time * 0.002 * this.twinkleSpeed + this.twinkleOffset)); }
+    draw(ctx, time) {
+      const alpha = this.getAlpha(time);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = this.color;
+      ctx.shadowColor = this.color;
+      ctx.shadowBlur = this.radius * 3;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore(); }
+  }
+
+  function initPoints() {
+    points.length = 0;
+    for (let i = 0; i < pointCount; i++) {
+      points.push(new Point()); }
+  }
+  initPoints();
+
+  function drawConnections(time) {
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        const dx = points[i].x - points[j].x;
+        const dy = points[i].y - points[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < connectDist) {
+          const alpha = (1 - dist / connectDist) * 0.4;
+          const avgAlpha = (points[i].getAlpha(time) + points[j].getAlpha(time)) / 2;
+          ctx.strokeStyle = `rgba(150, 180, 255, ${alpha * avgAlpha})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(points[i].x, points[i].y);
+          ctx.lineTo(points[j].x, points[j].y);
+          ctx.stroke(); }
+      }
+
+      // 鼠标连线
+      if (mouseActive) {
+        const dx = points[i].x - mouseX;
+        const dy = points[i].y - mouseY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < connectDist * 1.5) {
+          const alpha = (1 - dist / (connectDist * 1.5)) * 0.6;
+          ctx.strokeStyle = `rgba(255, 200, 100, ${alpha})`;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(points[i].x, points[i].y);
+          ctx.lineTo(mouseX, mouseY);
+          ctx.stroke(); }
+      }
+    }
+  }
+
+  function frame() {
+    if (!running) { requestAnimationFrame(frame); return; }
+    if (!paused) {
+      // 背景
+      ctx.fillStyle = 'rgba(0, 0, 16, 0.3)';
+      ctx.fillRect(0, 0, W, H);
+
+      const time = Date.now();
+
+      // 更新并绘制点
+      for (let p of points) {
+        p.update(time); }
+
+      drawConnections(time);
+
+      for (let p of points) {
+        p.draw(ctx, time); }
+
+      // 鼠标点
+      if (mouseActive) {
+        ctx.save();
+        ctx.fillStyle = '#ffcc66';
+        ctx.shadowColor = '#ffcc66';
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.arc(mouseX, mouseY, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore(); }
+    }
+    requestAnimationFrame(frame); }
+  requestAnimationFrame(frame);
+
+  // 鼠标交互
+  wrap.addEventListener('mousemove', (e) => {
+    const rect = wrap.getBoundingClientRect();
+    mouseX = e.clientX - rect.left;
+    mouseY = e.clientY - rect.top;
+    mouseActive = true; });
+  wrap.addEventListener('mouseleave', () => {
+    mouseActive = false;
+    mouseX = -999;
+    mouseY = -999; });
+  wrap.addEventListener('mousedown', () => {
+    mouseMode = mouseMode === 'attract' ? 'repel' : 'attract'; });
+  wrap.addEventListener('touchmove', (e) => {
+    const rect = wrap.getBoundingClientRect();
+    mouseX = e.touches[0].clientX - rect.left;
+    mouseY = e.touches[0].clientY - rect.top;
+    mouseActive = true; }, { passive: true });
+  wrap.addEventListener('touchend', () => {
+    mouseActive = false;
+    mouseX = -999;
+    mouseY = -999; });
+
+  // 控件
+  const elCount = document.getElementById('cs-count');
+  const elCountVal = document.getElementById('cs-count-val');
+  const elDist = document.getElementById('cs-dist');
+  const elDistVal = document.getElementById('cs-dist-val');
+  const elSpeed = document.getElementById('cs-speed');
+  const elSpeedVal = document.getElementById('cs-speed-val');
+  const elPause = document.getElementById('cs-pause');
+
+  if (elCount) {
+    elCount.addEventListener('input', (e) => {
+      pointCount = parseInt(e.target.value);
+      elCountVal.textContent = pointCount;
+      while (points.length < pointCount) {
+        points.push(new Point()); }
+      while (points.length > pointCount) {
+        points.pop(); }
+    }); }
+  if (elDist) {
+    elDist.addEventListener('input', (e) => {
+      connectDist = parseInt(e.target.value);
+      elDistVal.textContent = connectDist; }); }
+  if (elSpeed) {
+    elSpeed.addEventListener('input', (e) => {
+      moveSpeed = parseInt(e.target.value);
+      elSpeedVal.textContent = moveSpeed; }); }
+  if (elPause) {
+    elPause.addEventListener('click', () => {
+      paused = !paused;
+      elPause.textContent = paused ? ("Resume") : ("Pause"); }); }
+
+  // 全屏功能
+  const elFullscreen = document.getElementById('cs-fullscreen');
+  const panel = document.querySelector('.cs-panel');
+  if (elFullscreen) {
+    elFullscreen.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        wrap.requestFullscreen().catch(() => {}); } else {
+        document.exitFullscreen(); }
+    });
+    document.addEventListener('fullscreenchange', () => {
+      if (document.fullscreenElement) {
+        elFullscreen.textContent = "Exit";
+        if (panel) panel.style.display = 'none';
+        requestAnimationFrame(() => { resize(); initPoints(); }); } else {
+        elFullscreen.textContent = "Fullscreen";
+        if (panel) panel.style.display = '';
+        requestAnimationFrame(() => { resize(); initPoints(); }); }
+    }); }
+
+  // 自动演示功能 - 自动变换形态
+  const elDemo = document.getElementById('cs-demo');
+  let demoTimer = null;
+  let demoActive = false;
+  function stopDemo() {
+    demoActive = false;
+    mouseActive = false;
+    if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+    if (elDemo) elDemo.textContent = "Auto Demo"; }
+  if (elDemo) {
+    elDemo.addEventListener('click', () => {
+      if (demoActive) { stopDemo(); return; }
+      demoActive = true;
+      mouseActive = true;
+      elDemo.textContent = "Stop Demo";
+      let phase = 0;
+      let demoAngle = 0;
+      demoTimer = setInterval(() => {
+        phase += 0.04;
+        demoAngle += 0.02;
+        // 模拟鼠标做圆周运动
+        const centerX = W / 2;
+        const centerY = H / 2;
+        const radius = Math.min(W, H) * 0.3 + Math.sin(phase * 0.5) * 50;
+        mouseX = centerX + Math.cos(demoAngle) * radius;
+        mouseY = centerY + Math.sin(demoAngle) * radius;
+        // 速度变化
+        moveSpeed = Math.floor(2 + (Math.sin(phase) + 1) / 2 * 7);
+        if (elSpeed) { elSpeed.value = moveSpeed; elSpeedVal.textContent = moveSpeed; }
+        // 连线距离变化
+        connectDist = Math.floor(60 + (Math.sin(phase * 0.7) + 1) / 2 * 120);
+        if (elDist) { elDist.value = connectDist; elDistVal.textContent = connectDist; }
+        // 周期改变点数量
+        if (Math.floor(phase * 10) % 50 === 0) {
+          pointCount = Math.floor(rand(50, 180));
+          if (elCount) { elCount.value = pointCount; elCountVal.textContent = pointCount; }
+          while (points.length < pointCount) {
+            points.push(new Point()); }
+          while (points.length > pointCount) {
+            points.pop(); }
+        }
+      }, 100);
+      setTimeout(stopDemo, 12000); }); }
+
+  document.addEventListener('visibilitychange', () => {
+    running = !document.hidden;
+    if (document.hidden) stopDemo(); }); })();
+</script>
+<script>(function(){var r=document.querySelector('.constellation-wrap');if(r)r.classList.add('is-fs');})();</script>
+</body>
+</html>

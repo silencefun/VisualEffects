@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D Particle Galaxy</title>
+<style>
+  :root{
+    --radius:12px; --radius-sm:8px;
+    --border-color:rgba(255,255,255,.14);
+    --text-primary:#eef1fb; --text-secondary:#98a3c0; --text-muted:#8b93ad;
+    --bg:#07070d; --panel-bg:rgba(14,16,28,.82);
+    --bg-card:rgba(20,22,38,.72); --bg-secondary:rgba(255,255,255,.05);
+    --accent-color:#7c5cff; --accent-purple:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text-primary);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;}
+  body{display:flex;flex-direction:column;}
+  input[type=range]{accent-color:#7dd3fc;}
+  button{font:inherit;cursor:pointer;}
+  .btn-primary,.btn-secondary{
+    border-radius:8px;border:1px solid var(--border-color);padding:6px 12px;
+    background:rgba(255,255,255,.06);color:var(--text-primary);}
+  .btn-primary{background:rgba(125,211,252,.16);border-color:rgba(125,211,252,.4);}
+  .btn-primary:hover,.btn-secondary:hover{background:rgba(255,255,255,.13);}
+
+.tpg-wrap {
+  position: relative;
+  width: 100%;
+  height: 520px;
+  background: #000010;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border-color); }
+.tpg-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none; }
+.tpg-panel {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  background: rgba(5, 5, 20, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  z-index: 10; }
+.tpg-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center; }
+.tpg-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px; }
+.tpg-field-label { white-space: nowrap; }
+.tpg-field input[type="range"] { width: 80px; accent-color: #a855f7; }
+.tpg-value {
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+  font-size: 12px; }
+.tpg-select {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: 13px; }
+@media (max-width: 640px) {
+  .tpg-wrap { height: 360px; }
+  .tpg-field input[type="range"] { width: 55px; }
+  .tpg-field { font-size: 12px; }
+}
+.tpg-wrap.is-fs {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0; }
+.tpg-wrap.is-fs .tpg-canvas {
+  height: 100%; }
+.tpg-wrap.is-fs .tpg-panel {
+  display: none; }
+</style>
+<style>tpg-wrap{height:100vh!important;width:100vw!important;border-radius:0!important;}tpg-wrap canvas{width:100%!important;height:100%!important;display:block;}</style>
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+</head>
+<body>
+<div class="tpg-wrap">
+  <canvas id="tpg-canvas" class="tpg-canvas"></canvas>
+
+  <div class="tpg-panel">
+    <div class="tpg-row">
+      <div class="tpg-field">
+        <span class="tpg-field-label">Particles</span>
+        <input type="range" id="tpg-count" min="1000" max="20000" step="500" value="8000" />
+        <span class="tpg-value" id="tpg-count-val">8000</span>
+      </div>
+      <div class="tpg-field">
+        <span class="tpg-field-label">Rotation</span>
+        <input type="range" id="tpg-speed" min="0" max="2" step="0.1" value="0.5" />
+        <span class="tpg-value" id="tpg-speed-val">0.5</span>
+      </div>
+      <div class="tpg-field">
+        <span class="tpg-field-label">Size</span>
+        <input type="range" id="tpg-size" min="2" max="15" step="0.5" value="8" />
+        <span class="tpg-value" id="tpg-size-val">8</span>
+      </div>
+      <div class="tpg-field">
+        <span class="tpg-field-label">Color</span>
+        <select id="tpg-color" class="tpg-select">
+          <option value="purple">Purple-Blue</option>
+          <option value="gold">Golden</option>
+          <option value="cyan">Cyan</option>
+          <option value="rainbow">Rainbow</option>
+        </select>
+      </div>
+      <button class="btn-secondary" id="tpg-pause">Pause</button>
+      <button class="btn-secondary" id="tpg-fullscreen">Fullscreen</button>
+      <button class="btn-primary" id="tpg-demo">Auto Demo</button>
+    </div>
+  </div>
+</div>
+<script is:inline type="module">
+import * as THREE from 'three';
+
+const isZh = document.documentElement.lang === 'zh';
+const canvas = document.getElementById('tpg-canvas');
+if (!canvas) throw new Error('Canvas not found');
+const wrap = canvas.closest('.tpg-wrap');
+
+// Scene setup
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000010, 0.03);
+
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+camera.position.set(0, 3, 12);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+// Resize
+let W, H;
+function resize() {
+  const rect = wrap.getBoundingClientRect();
+  W = rect.width;
+  H = rect.height;
+  renderer.setSize(W, H, false);
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix(); }
+resize();
+window.addEventListener('resize', resize);
+
+// Galaxy parameters
+let params = {
+  count: 8000,
+  size: 8,
+  branches: 4,
+  spin: 1.2,
+  randomness: 0.5,
+  randomnessPower: 3,
+  rotationSpeed: 0.5,
+  colorMode: 'purple'
+};
+
+let particles = null;
+let geometry = null;
+let material = null;
+
+const colorSchemes = {
+  purple: { inside: 0xff6030, outside: 0x1b3984 },
+  gold:   { inside: 0xffd700, outside: 0xff6600 },
+  cyan:   { inside: 0x00ffff, outside: 0x0066ff },
+  rainbow: { inside: 0xffffff, outside: 0xff00ff }
+};
+
+function createGalaxy() {
+  if (particles) {
+    scene.remove(particles);
+    geometry.dispose();
+    material.dispose(); }
+
+  geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(params.count * 3);
+  const colors = new Float32Array(params.count * 3);
+  const scales = new Float32Array(params.count);
+  const randomness = new Float32Array(params.count * 3);
+
+  const scheme = colorSchemes[params.colorMode];
+  const colorInside = new THREE.Color(scheme.inside);
+  const colorOutside = new THREE.Color(scheme.outside);
+
+  for (let i = 0; i < params.count; i++) {
+    const i3 = i * 3;
+    const radius = Math.random() * params.size;
+    const branchAngle = ((i % params.branches) / params.branches) * Math.PI * 2;
+    const spinAngle = radius * params.spin;
+
+    const randomX = Math.pow(Math.random(), params.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * params.randomness * radius;
+    const randomY = Math.pow(Math.random(), params.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * params.randomness * radius * 0.3;
+    const randomZ = Math.pow(Math.random(), params.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * params.randomness * radius;
+
+    positions[i3] = Math.cos(branchAngle + spinAngle) * radius + randomX;
+    positions[i3 + 1] = randomY;
+    positions[i3 + 2] = Math.sin(branchAngle + spinAngle) * radius + randomZ;
+
+    randomness[i3] = randomX;
+    randomness[i3 + 1] = randomY;
+    randomness[i3 + 2] = randomZ;
+
+    // Color
+    const mixedColor = colorInside.clone();
+    mixedColor.lerp(colorOutside, radius / params.size);
+    if (params.colorMode === 'rainbow') {
+      const hue = (i / params.count + radius / params.size) % 1;
+      mixedColor.setHSL(hue, 0.8, 0.6); }
+    colors[i3] = mixedColor.r;
+    colors[i3 + 1] = mixedColor.g;
+    colors[i3 + 2] = mixedColor.b;
+
+    scales[i] = Math.random(); }
+
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute('aScale', new THREE.BufferAttribute(scales, 1));
+  geometry.setAttribute('aRandomness', new THREE.BufferAttribute(randomness, 3));
+
+  // Create circular texture
+  const canvasTex = document.createElement('canvas');
+  canvasTex.width = 64;
+  canvasTex.height = 64;
+  const ctx = canvasTex.getContext('2d');
+  const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.3, 'rgba(255,255,255,0.6)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 64, 64);
+  const particleTexture = new THREE.CanvasTexture(canvasTex);
+
+  material = new THREE.PointsMaterial({
+    size: 0.08,
+    sizeAttenuation: true,
+    vertexColors: true,
+    transparent: true,
+    alphaMap: particleTexture,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+
+  particles = new THREE.Points(geometry, material);
+  scene.add(particles); }
+
+createGalaxy();
+
+// Background stars
+const bgStarsGeo = new THREE.BufferGeometry();
+const bgStarsCount = 800;
+const bgStarsPos = new Float32Array(bgStarsCount * 3);
+for (let i = 0; i < bgStarsCount * 3; i++) {
+  bgStarsPos[i] = (Math.random() - 0.5) * 200; }
+bgStarsGeo.setAttribute('position', new THREE.BufferAttribute(bgStarsPos, 3));
+const bgStarsMat = new THREE.PointsMaterial({
+  size: 0.15,
+  color: 0xffffff,
+  transparent: true,
+  opacity: 0.6,
+  depthWrite: false
+});
+const bgStars = new THREE.Points(bgStarsGeo, bgStarsMat);
+scene.add(bgStars);
+
+// Mouse parallax
+let mouseX = 0, mouseY = 0;
+let targetRotX = 0, targetRotY = 0;
+
+wrap.addEventListener('mousemove', (e) => {
+  const rect = wrap.getBoundingClientRect();
+  mouseX = (e.clientX - rect.left) / W - 0.5;
+  mouseY = (e.clientY - rect.top) / H - 0.5; });
+wrap.addEventListener('mouseleave', () => {
+  mouseX = 0; mouseY = 0; });
+wrap.addEventListener('touchmove', (e) => {
+  const rect = wrap.getBoundingClientRect();
+  mouseX = (e.touches[0].clientX - rect.left) / W - 0.5;
+  mouseY = (e.touches[0].clientY - rect.top) / H - 0.5; }, { passive: true });
+wrap.addEventListener('touchend', () => {
+  mouseX = 0; mouseY = 0; });
+
+// Animation
+let running = true;
+let time = 0;
+let paused = false;
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (!running || paused) return;
+
+  time += 0.016;
+
+  if (particles) {
+    particles.rotation.y += params.rotationSpeed * 0.005; }
+
+  bgStars.rotation.y += params.rotationSpeed * 0.001;
+
+  // Parallax
+  targetRotY = mouseX * 0.8;
+  targetRotX = -mouseY * 0.5;
+  camera.position.x += (targetRotY * 3 - camera.position.x) * 0.03;
+  camera.position.y += (3 + targetRotX * 3 - camera.position.y) * 0.03;
+  camera.lookAt(0, 0, 0);
+
+  renderer.render(scene, camera); }
+animate();
+
+// Controls
+const elCount = document.getElementById('tpg-count');
+const elCountVal = document.getElementById('tpg-count-val');
+const elSpeed = document.getElementById('tpg-speed');
+const elSpeedVal = document.getElementById('tpg-speed-val');
+const elSize = document.getElementById('tpg-size');
+const elSizeVal = document.getElementById('tpg-size-val');
+const elColor = document.getElementById('tpg-color');
+const elPause = document.getElementById('tpg-pause');
+const elFullscreen = document.getElementById('tpg-fullscreen');
+const elDemo = document.getElementById('tpg-demo');
+const panel = document.querySelector('.tpg-panel');
+
+let rebuildTimeout;
+function scheduleRebuild() {
+  clearTimeout(rebuildTimeout);
+  rebuildTimeout = setTimeout(createGalaxy, 100); }
+
+elCount.addEventListener('input', (e) => {
+  params.count = parseInt(e.target.value);
+  elCountVal.textContent = params.count;
+  scheduleRebuild(); });
+elSpeed.addEventListener('input', (e) => {
+  params.rotationSpeed = parseFloat(e.target.value);
+  elSpeedVal.textContent = params.rotationSpeed.toFixed(1); });
+elSize.addEventListener('input', (e) => {
+  params.size = parseFloat(e.target.value);
+  elSizeVal.textContent = params.size.toFixed(1);
+  scheduleRebuild(); });
+elColor.addEventListener('change', (e) => {
+  params.colorMode = e.target.value;
+  createGalaxy(); });
+elPause.addEventListener('click', () => {
+  paused = !paused;
+  elPause.textContent = paused ? ("Resume") : ("Pause"); });
+
+// Fullscreen
+elFullscreen.addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    wrap.requestFullscreen().catch(() => {}); } else {
+    document.exitFullscreen(); }
+});
+document.addEventListener('fullscreenchange', () => {
+  if (document.fullscreenElement) {
+    elFullscreen.textContent = "Exit";
+    if (panel) panel.style.display = 'none';
+    requestAnimationFrame(resize); } else {
+    elFullscreen.textContent = "Fullscreen";
+    if (panel) panel.style.display = '';
+    requestAnimationFrame(resize); }
+});
+
+// Auto demo
+let demoTimer = null;
+let demoActive = false;
+function stopDemo() {
+  demoActive = false;
+  mouseX = 0; mouseY = 0;
+  if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+  if (elDemo) elDemo.textContent = "Auto Demo"; }
+elDemo.addEventListener('click', () => {
+  if (demoActive) { stopDemo(); return; }
+  demoActive = true;
+  elDemo.textContent = "Stop Demo";
+
+  let step = 0;
+  const colorModes = ['purple', 'gold', 'cyan', 'rainbow'];
+  let demoMouseAngle = 0;
+
+  demoTimer = setInterval(() => {
+    step++;
+    demoMouseAngle += 0.02;
+    mouseX = Math.sin(demoMouseAngle) * 0.8;
+    mouseY = Math.cos(demoMouseAngle * 0.7) * 0.4;
+
+    if (step % 40 === 0) {
+      const nextColor = colorModes[Math.floor(Math.random() * colorModes.length)];
+      params.colorMode = nextColor;
+      elColor.value = nextColor;
+      createGalaxy(); }
+    if (step % 30 === 0) {
+      const newSpeed = 0.2 + Math.random() * 1.5;
+      params.rotationSpeed = newSpeed;
+      elSpeed.value = newSpeed;
+      elSpeedVal.textContent = newSpeed.toFixed(1); }
+    if (step % 50 === 0) {
+      const newSize = 4 + Math.random() * 8;
+      params.size = newSize;
+      elSize.value = newSize;
+      elSizeVal.textContent = newSize.toFixed(1);
+      scheduleRebuild(); }
+  }, 50);
+
+  setTimeout(stopDemo, 15000); });
+
+// Visibility
+document.addEventListener('visibilitychange', () => {
+  running = !document.hidden;
+  if (document.hidden) stopDemo(); });
+</script>
+<script>(function(){var r=document.querySelector('.tpg-wrap');if(r)r.classList.add('is-fs');})();</script>
+</body>
+</html>

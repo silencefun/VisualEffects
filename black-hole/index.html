@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Black Hole</title>
+<style>
+  :root{
+    --radius:12px; --radius-sm:8px;
+    --border-color:rgba(255,255,255,.14);
+    --text-primary:#eef1fb; --text-secondary:#98a3c0; --text-muted:#8b93ad;
+    --bg:#07070d; --panel-bg:rgba(14,16,28,.82);
+    --bg-card:rgba(20,22,38,.72); --bg-secondary:rgba(255,255,255,.05);
+    --accent-color:#7c5cff; --accent-purple:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text-primary);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;}
+  body{display:flex;flex-direction:column;}
+  input[type=range]{accent-color:#7dd3fc;}
+  button{font:inherit;cursor:pointer;}
+  .btn-primary,.btn-secondary{
+    border-radius:8px;border:1px solid var(--border-color);padding:6px 12px;
+    background:rgba(255,255,255,.06);color:var(--text-primary);}
+  .btn-primary{background:rgba(125,211,252,.16);border-color:rgba(125,211,252,.4);}
+  .btn-primary:hover,.btn-secondary:hover{background:rgba(255,255,255,.13);}
+
+  .bh-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .bh-controls {  display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; position: relative; z-index: 10; }
+  .bh-controls button { white-space: nowrap;  }
+  .bh-stage { position: relative; width: min(96vw, 600px); }
+  #bh-canvas { width: 100%; height: 360px; background: #000; border: 1px solid var(--border-color); border-radius: var(--radius-sm); display: block; }
+  .bh-hint { color: var(--text-muted); font-size: 0.85rem; text-align: center; max-width: 560px; }
+    .bh-wrap.is-fs { width: 100vw; height: 100vh; background: #000; justify-content: center; align-items: center; overflow: hidden; }
+  .bh-wrap.is-fs .bh-stage { width: 100%; height: 100%; position: relative; }
+  .bh-wrap.is-fs #bh-canvas { width: 100%; height: 100%; border: none; border-radius: 0; }
+  .bh-wrap.is-fs .bh-controls {  display: none; }
+  .bh-wrap.is-fs .bh-hint { display: none; }
+</style>
+<style>bh-wrap{height:100vh!important;width:100vw!important;border-radius:0!important;}bh-wrap canvas{width:100%!important;height:100%!important;display:block;}</style>
+</head>
+<body>
+<div class="bh-wrap">
+  <div class="bh-controls">
+    <button class="btn-primary" id="bh-toggle">Pause</button>
+    <button class="btn-secondary" id="bh-mass">Mass</button>
+    <button class="btn-secondary" id="bh-fullscreen">Fullscreen</button>
+  </div>
+  <div class="bh-stage">
+    <canvas id="bh-canvas" width="520" height="360"></canvas>
+  </div>
+  <div class="bh-hint">A black hole bends light with its immense gravity, stretching background starlight into an Einstein ring. Tap Mass to change the gravity.</div>
+</div>
+<script>
+(function() {
+    const isZh = document.documentElement.lang === 'zh';
+    const canvas = document.getElementById('bh-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let W = canvas.width, H = canvas.height;
+    const _dpr = Math.min(window.devicePixelRatio || 1, 2);
+    function _resize() { const cw = canvas.clientWidth, ch = canvas.clientHeight; if (cw > 0 && ch > 0) { W = cw; H = ch; } canvas.width = Math.round(W * _dpr); canvas.height = Math.round(H * _dpr); ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0); cx = W / 2; cy = H / 2; }
+    let cx = W / 2, cy = H / 2;
+
+    const stars = [];
+    for (let i = 0; i < 520; i++) stars.push({ a: Math.random() * Math.PI * 2, r: 20 + Math.random() * Math.hypot(W, H) * 0.55, s: Math.random() * 1.4 + 0.3, tw: Math.random() * 6 });
+    const masses = [2600, 4200, 6400];
+    let mi = 1, horizon = 42;
+
+    let running = true, t = 0;
+    function draw() {
+      t += 0.008;
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+      const lens = masses[mi];
+      const rot = t * 0.05;
+      for (const st of stars) {
+        const a = st.a + rot;
+        const r = st.r;
+        // 引力透镜：径向向外偏移，越近偏移越大
+        const bend = lens / r;
+        const ar = r + bend;
+        const px = cx + Math.cos(a) * ar;
+        const py = cy + Math.sin(a) * ar;
+        if (px < 0 || px > W || py < 0 || py > H) continue;
+        const tw = 0.6 + 0.4 * Math.sin(t * 3 + st.tw);
+        ctx.fillStyle = 'rgba(255,255,255,' + tw + ')';
+        ctx.beginPath(); ctx.arc(px, py, st.s, 0, Math.PI * 2); ctx.fill();
+ }
+      // 吸积盘光晕
+      const halo = ctx.createRadialGradient(cx, cy, horizon, cx, cy, horizon * 3.2);
+      halo.addColorStop(0, 'rgba(255,170,70,0.55)');
+      halo.addColorStop(0.5, 'rgba(255,90,40,0.22)');
+      halo.addColorStop(1, 'rgba(120,40,160,0)');
+      ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(cx, cy, horizon * 3.2, 0, Math.PI * 2); ctx.fill();
+      // 视界（纯黑）
+      ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(cx, cy, horizon, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,200,120,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+      if (running) requestAnimationFrame(draw);
+ }
+
+    const toggle = document.getElementById('bh-toggle');
+    toggle.addEventListener('click', () => { running = !running; toggle.textContent = running ? ("Pause") : ("Play"); if (running) draw(); });
+    document.getElementById('bh-mass').addEventListener('click', () => { mi = (mi + 1) % masses.length; horizon = 34 + mi * 8; });
+    document.addEventListener('visibilitychange', () => { running = !document.hidden; toggle.textContent = running ? ("Pause") : ("Play"); if (running) draw(); });
+
+    _resize();
+    window.addEventListener('resize', function() { _resize(); if (!running) draw(); });
+    draw();
+    (function(){
+      const wrap = canvas.closest('.bh-wrap');
+      const fs = document.getElementById('bh-fullscreen');
+      if (fs) {
+        fs.addEventListener('click', () => { if (!document.fullscreenElement) wrap.requestFullscreen().catch(()=>{}); else document.exitFullscreen(); });
+        document.addEventListener('fullscreenchange', () => { fs.textContent = document.fullscreenElement ? ("Exit") : ("Fullscreen"); requestAnimationFrame(function(){ _resize(); if (!running) draw(); }); });
+ }
+    })();
+ })();
+</script>
+<script>(function(){var r=document.querySelector('.bh-wrap');if(r)r.classList.add('is-fs');})();</script>
+</body>
+</html>

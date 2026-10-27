@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Starry 3D Album</title>
+<style>
+  :root{
+    --radius:12px; --radius-sm:8px;
+    --border-color:rgba(255,255,255,.14);
+    --text-primary:#eef1fb; --text-secondary:#98a3c0; --text-muted:#8b93ad;
+    --bg:#07070d; --panel-bg:rgba(14,16,28,.82);
+    --bg-card:rgba(20,22,38,.72); --bg-secondary:rgba(255,255,255,.05);
+    --accent-color:#7c5cff; --accent-purple:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text-primary);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;}
+  body{display:flex;flex-direction:column;}
+  input[type=range]{accent-color:#7dd3fc;}
+  button{font:inherit;cursor:pointer;}
+  .btn-primary,.btn-secondary{
+    border-radius:8px;border:1px solid var(--border-color);padding:6px 12px;
+    background:rgba(255,255,255,.06);color:var(--text-primary);}
+  .btn-primary{background:rgba(125,211,252,.16);border-color:rgba(125,211,252,.4);}
+  .btn-primary:hover,.btn-secondary:hover{background:rgba(255,255,255,.13);}
+
+.s3d-wrap { position: relative; width: 100%; min-height: 600px; background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%); border-radius: var(--radius); overflow: hidden; user-select: none; }
+.s3d-wrap select, .s3d-wrap input[type="text"] { background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; }
+.s3d-wrap input[type="range"] { accent-color: #ec4899; width: 70px; }
+
+.s3d-stars { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+
+/* 点击相片后临时铺满的照片背景，淡出后恢复星空 */
+.s3d-photo-bg { position: absolute; inset: 0; z-index: 1; background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 0; pointer-events: none; }
+
+.s3d-stage { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; perspective: 900px; perspective-origin: 50% 45%; }
+
+.s3d-ring { position: relative; width: 460px; height: 460px; transform-style: preserve-3d; transition: transform 0.1s linear; }
+
+.s3d-ring-item { position: absolute; top: 50%; left: 50%; width: 150px; height: 113px; margin-left: -75px; margin-top: -56.5px; border-radius: 8px; overflow: hidden; border: 3px solid rgba(255,255,255,0.25); box-shadow: 0 0 20px rgba(236,72,153,0.2); transition: border-color 0.3s, box-shadow 0.3s; cursor: pointer; background: rgba(255,255,255,0.05); }
+.s3d-ring-item:hover { border-color: rgba(236,72,153,0.9); box-shadow: 0 0 30px rgba(236,72,153,0.5); z-index: 999; }
+.s3d-ring-item img { width: 100%; height: 100%; object-fit: cover; }
+
+.s3d-ring-item.placeholder { display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.3); font-size: 2rem; }
+
+.s3d-center { position: absolute; text-align: center; pointer-events: none; }
+
+/* 全屏状态 — 圆环占屏幕宽度 1/3，照片清晰可见 */
+.s3d-wrap.is-fs { min-height: 100vh; }
+.s3d-wrap.is-fs .s3d-stage { perspective: 50vw; }
+  .s3d-wrap.is-fs .s3d-ring { width: 44vw; height: 44vw; }
+  .s3d-wrap.is-fs .s3d-ring-item { width: 13.5vw; height: 10vw; margin-left: -6.75vw; margin-top: -5vw; border-width: 4px; }
+.s3d-wrap.is-fs .s3d-center-title { font-size: 2.8vw; }
+.s3d-wrap.is-fs .s3d-center-sub { font-size: 1.4vw; }
+.s3d-wrap.is-fs .s3d-panel { padding: 14px 20px; }
+.s3d-center-title { font-size: 1.8rem; color: #ec4899; text-shadow: 0 0 20px rgba(236,72,153,0.6); font-weight: bold; letter-spacing: 0.1em; }
+.s3d-center-sub { font-size: 1rem; color: rgba(255,255,255,0.6); margin-top: 6px; }
+
+.s3d-reflect { position: absolute; inset: 50% 0 0 0; z-index: 1; background: linear-gradient(to bottom, rgba(9,10,15,0) 0%, rgba(9,10,15,0.4) 30%, rgba(9,10,15,0.85) 100%); pointer-events: none; }
+
+.s3d-panel { position: absolute; bottom: 12px; left: 12px; right: 12px; background: rgba(10,10,20,0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm); padding: 10px 14px; z-index: 10; display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.s3d-field { display: flex; flex-direction: column; gap: 4px; }
+.s3d-field label { font-size: 0.7rem; color: rgba(255,255,255,0.6); }
+.s3d-btn { padding: 6px 14px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.85); border-radius: 6px; cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
+.s3d-btn:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.35); }
+.s3d-btn-primary { background: linear-gradient(135deg, #ec4899, #8b5cf6); border-color: transparent; color: #fff; }
+.s3d-btn-primary:hover { opacity: 0.9; }
+
+@media (max-width: 640px) {
+  .s3d-ring { width: 360px; height: 360px; }
+  .s3d-ring-item { width: 110px; height: 82px; margin-left: -55px; margin-top: -41px; }
+  .s3d-center-title { font-size: 1.3rem; }
+}
+</style>
+<style>s3d-wrap{height:100vh!important;width:100vw!important;border-radius:0!important;}s3d-wrap canvas{width:100%!important;height:100%!important;display:block;}</style>
+</head>
+<body>
+<div class="s3d-wrap" id="s3d-wrap">
+  <!-- 星空背景 Canvas -->
+  <canvas id="s3d-stars" class="s3d-stars"></canvas>
+
+  <!-- 点击相片后临时铺满的照片背景（淡出后恢复星空） -->
+  <div class="s3d-photo-bg" id="s3d-photo-bg"></div>
+
+  <!-- 3D 照片圆环容器 -->
+  <div class="s3d-stage" id="s3d-stage">
+    <div class="s3d-ring" id="s3d-ring">
+      <!-- 照片由 JS 动态生成 -->
+    </div>
+    <!-- 中间文字 -->
+    <div class="s3d-center" id="s3d-center">
+      <div class="s3d-center-title">❤ Forever ❤</div>
+      <div class="s3d-center-sub" id="s3d-center-text">Our Memories</div>
+    </div>
+  </div>
+
+  <!-- 地面反射 -->
+  <div class="s3d-reflect" id="s3d-reflect"></div>
+
+  <!-- 控制面板 -->
+  <div class="s3d-panel">
+    <input type="file" id="s3d-file-input" accept="image/*" multiple style="display:none" />
+    <button class="s3d-btn s3d-btn-primary" id="s3d-upload">Upload</button>
+    <div class="s3d-field">
+      <label>Text</label>
+      <input type="text" id="s3d-text" value=Our Memories maxlength="20" />
+    </div>
+    <div class="s3d-field">
+      <label>Speed</label>
+      <input type="range" id="s3d-speed" min="0" max="100" value="30" />
+    </div>
+    <button class="s3d-btn" id="s3d-fullscreen">Fullscreen</button>
+  </div>
+</div>
+<script>
+(function() {
+  const wrap = document.getElementById('s3d-wrap');
+  const ring = document.getElementById('s3d-ring');
+  const starsCanvas = document.getElementById('s3d-stars');
+  const centerTxt = document.getElementById('s3d-center-text');
+  const speedSlider = document.getElementById('s3d-speed');
+  const textInput = document.getElementById('s3d-text');
+  const stage = document.getElementById('s3d-stage');
+  const fileInput = document.getElementById('s3d-file-input');
+  const photoBg = document.getElementById('s3d-photo-bg');
+
+  const photoCount = 12;
+  let images = [];
+  let currentAngle = 0;
+  let speed = 0.3;
+  let isDragging = false;
+  let lastX = 0;
+  let dragVelocity = 0;
+  let autoRotate = true;
+
+  // --- 星空 Canvas ---
+  const ctx = starsCanvas.getContext('2d');
+  let starParticles = [];
+  let meteorParticles = [];
+
+  function resizeCanvas() {
+    const rect = wrap.getBoundingClientRect();
+    starsCanvas.width = rect.width;
+    starsCanvas.height = rect.height;
+  }
+
+  function initStars() {
+    resizeCanvas();
+    starParticles = [];
+    for (let i = 0; i < 200; i++) {
+      const layer = Math.floor(Math.random() * 3);
+      starParticles.push({
+        x: Math.random() * starsCanvas.width,
+        y: Math.random() * starsCanvas.height * 0.7,
+        r: Math.random() * (layer === 0 ? 2 : layer === 1 ? 1.5 : 1),
+        speed: 0.1 + layer * 0.15,
+        alpha: 0.3 + layer * 0.35,
+        layer
+      });
+    }
+  }
+
+  function spawnMeteor() {
+    const x = Math.random() * starsCanvas.width;
+    meteorParticles.push({
+      x, y: Math.random() * starsCanvas.height * 0.3,
+      vx: (Math.random() - 0.5) * 1.5,
+      vy: 3 + Math.random() * 6,
+      life: 0,
+      maxLife: 30 + Math.random() * 30,
+      r: 1 + Math.random() * 1.5
+    });
+  }
+
+  function drawStars() {
+    ctx.clearRect(0, 0, starsCanvas.width, starsCanvas.height);
+
+    // stars
+    for (const s of starParticles) {
+      s.y += s.speed;
+      if (s.y > starsCanvas.height * 0.7) s.y = 0;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${s.alpha})`;
+      ctx.fill();
+    }
+
+    // meteors - trailing effect
+    for (let i = meteorParticles.length - 1; i >= 0; i--) {
+      const m = meteorParticles[i];
+      m.x += m.vx;
+      m.y += m.vy;
+      m.life++;
+
+      const progress = m.life / m.maxLife;
+      const alpha = 1 - progress;
+
+      // tail
+      const trailLen = 40 * alpha;
+      ctx.beginPath();
+      ctx.moveTo(m.x, m.y);
+      ctx.lineTo(m.x - m.vx * trailLen, m.y - m.vy * trailLen);
+      ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+      ctx.lineWidth = m.r;
+      ctx.stroke();
+
+      // head
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.r * 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${Math.min(1, alpha * 1.5)})`;
+      ctx.fill();
+
+      if (m.life >= m.maxLife || m.y > starsCanvas.height) {
+        meteorParticles.splice(i, 1);
+      }
+    }
+  }
+
+  // --- 3D 照片环 ---
+  function getRadius() {
+    // 关键修复：不能用 getBoundingClientRect().width —— 圆环在 3D 旋转中，其包围盒宽度会随旋转角度被透视压缩，
+    // 上传重建时若恰好转到侧面，radius 被算得极小、照片挤成一团。改用 offsetWidth（布局宽度，不受 transform 影响）。
+    const w = ring.offsetWidth || 460;
+    return w * 0.42;
+  }
+
+  function buildRing() {
+    ring.innerHTML = '';
+    const radius = getRadius();
+    for (let i = 0; i < photoCount; i++) {
+      const angle = (360 / photoCount) * i;
+      const item = document.createElement('div');
+      item.className = 's3d-ring-item';
+      item.style.transform = `rotateY(${angle}deg) translateZ(${radius}px)`;
+
+      if (images.length > 0) {
+        const idx = i % images.length;
+        const img = document.createElement('img');
+        img.src = images[idx];
+        img.alt = `Photo ${i + 1}`;
+        item.appendChild(img);
+      } else {
+        item.classList.add('placeholder');
+        item.textContent = '📷';
+      }
+      ring.appendChild(item);
+
+      // 点击相片 -> 临时铺满背景并淡出（仿透明立方相册）
+      item.addEventListener('click', () => {
+        const img = item.querySelector('img') | null;
+        if (img) showPhotoBg(img.src);
+      });
+    }
+  }
+
+  // 点击相片后临时铺满照片背景，随后 2.5s 淡出
+  function showPhotoBg(src) {
+    if (!photoBg) return;
+    photoBg.style.backgroundImage = `url("${src}")`;
+    photoBg.style.transition = 'none';
+    photoBg.style.opacity = '1';
+    void photoBg.offsetWidth; // 强制回流，确保从满透明度开始
+    photoBg.style.transition = 'opacity 2.5s ease';
+    photoBg.style.opacity = '0';
+  }
+
+  function rotateRing(angle) {
+    ring.style.transform = `rotateY(${angle}deg)`;
+  }
+
+  // --- 交互 ---
+  function onMouseDown(e) {
+    isDragging = true;
+    autoRotate = false;
+    lastX = e.clientX;
+    dragVelocity = 0;
+  }
+
+  function onMouseMove(e) {
+    if (!isDragging) return;
+    const dx = e.clientX - lastX;
+    lastX = e.clientX;
+    dragVelocity = dx * 0.5;
+    currentAngle += dx * 0.5;
+    rotateRing(currentAngle);
+  }
+
+  function onMouseUp() {
+    isDragging = false;
+    autoRotate = true;
+  }
+
+  // Touch
+  function onTouchStart(e) {
+    if (e.touches.length === 1) {
+      isDragging = true;
+      autoRotate = false;
+      lastX = e.touches[0].clientX;
+      dragVelocity = 0;
+    }
+  }
+
+  function onTouchMove(e) {
+    if (!isDragging || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - lastX;
+    lastX = e.touches[0].clientX;
+    dragVelocity = dx * 0.5;
+    currentAngle += dx * 0.5;
+    rotateRing(currentAngle);
+  }
+
+  function onTouchEnd() {
+    isDragging = false;
+    autoRotate = true;
+  }
+
+  // --- 动画循环 ---
+  function animate() {
+    drawStars();
+
+    if (autoRotate && !isDragging) {
+      // decay drag velocity
+      if (Math.abs(dragVelocity) > 0.01) {
+        currentAngle += dragVelocity;
+        dragVelocity *= 0.95;
+        rotateRing(currentAngle);
+      } else {
+        dragVelocity = 0;
+        currentAngle += speed;
+        rotateRing(currentAngle);
+      }
+    } else if (autoRotate && Math.abs(dragVelocity) > 0.01) {
+      currentAngle += dragVelocity;
+      dragVelocity *= 0.95;
+      rotateRing(currentAngle);
+      if (Math.abs(dragVelocity) < 0.01) dragVelocity = 0;
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  // --- 定时生成流星 ---
+  setInterval(() => {
+    if (Math.random() < 0.3) spawnMeteor();
+  }, 2000);
+
+  // --- 首页加载一张默认图片 ---
+  function emptyClick() {
+    // Just pass - for placeholder clicking
+  }
+
+  // --- 上传 ---
+  document.getElementById('s3d-upload')?.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const files = fileInput.files;
+    if (!files || files.length === 0) return;
+    images = [];
+    let loaded = 0;
+    const total = Math.min(files.length, photoCount);
+    for (let i = 0; i < total; i++) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        images.push(e.target.result);
+        loaded++;
+        if (loaded === total) buildRing();
+      };
+      reader.readAsDataURL(files[i]);
+    }
+  });
+
+  // --- 速度控制 ---
+  speedSlider?.addEventListener('input', () => {
+    speed = parseFloat(speedSlider.value) * 0.01;
+  });
+
+  // --- 文字 ---
+  textInput?.addEventListener('input', () => {
+    if (centerTxt) centerTxt.textContent = textInput.value;
+  });
+
+  // --- 全屏 ---
+  const fullscreenBtn = document.getElementById('s3d-fullscreen');
+  fullscreenBtn?.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else wrap?.requestFullscreen();
+  });
+
+  // fullscreen 切换时重新缩放 canvas + 重分布星星
+  function onFullscreenChange() {
+    // 等全屏布局生效后再读取尺寸，避免读到旧的小窗尺寸导致比例不对/元素挤压
+    requestAnimationFrame(() => {
+      resizeCanvas();
+      starParticles = [];
+      for (let i = 0; i < 200; i++) {
+        const layer = Math.floor(Math.random() * 3);
+        starParticles.push({
+          x: Math.random() * starsCanvas.width,
+          y: Math.random() * starsCanvas.height * 0.7,
+          r: Math.random() * (layer === 0 ? 2 : layer === 1 ? 1.5 : 1),
+          speed: 0.1 + layer * 0.15,
+          alpha: 0.3 + layer * 0.35,
+          layer
+        });
+      }
+      // 退出全屏时也重建 ring（让 radius 匹配 CSS 尺寸）
+      buildRing();
+    });
+  }
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+
+  // --- 响应式 ---
+  window.addEventListener('resize', resizeCanvas);
+
+  // 事件监听
+  stage?.addEventListener('mousedown', onMouseDown);
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup', onMouseUp);
+  stage?.addEventListener('touchstart', onTouchStart, { passive: false });
+  document.addEventListener('touchmove', onTouchMove, { passive: false });
+  document.addEventListener('touchend', onTouchEnd);
+
+  // 初始化
+  initStars();
+  buildRing();
+  animate();
+})();
+</script>
+<script>(function(){var r=document.querySelector('.s3d-wrap');if(r)r.classList.add('is-fs');})();</script>
+<script>
+(function(){
+  var PAL=[['#ff9a9e','#fad0c4','#fbc2eb'],['#a18cd1','#fbc2eb','#8fd3f4'],
+    ['#84fab0','#8fd3f4','#4facfe'],['#f093fb','#f5576c','#ffd6e0'],
+    ['#43e97b','#38f9d7','#4facfe'],['#fa709a','#fee140','#ff9a44'],
+    ['#30cfd0','#330867','#5b86e5'],['#c471ed','#f64f59','#12c2e9'],
+    ['#fddb92','#d1fdff','#f6f7fb'],['#5ee7df','#b490ca','#c3cfe2'],
+    ['#667eea','#764ba2','#f093fb'],['#ff9a44','#fc6076','#ffd6e0']];
+  function svg(i){
+    var p=PAL[i%PAL.length];
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="226">'
+      +'<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
+      +'<stop offset="0%" stop-color="'+p[0]+'"/><stop offset="55%" stop-color="'+p[1]+'"/>'
+      +'<stop offset="100%" stop-color="'+p[2]+'"/></linearGradient></defs>'
+      +'<rect width="300" height="226" fill="url(#g)"/>'
+      +'<circle cx="'+(60+i*18%180)+'" cy="'+(70+i*22%120)+'" r="42" fill="rgba(255,255,255,.28)"/>'
+      +'<text x="150" y="200" font-family="sans-serif" font-size="34" fill="rgba(255,255,255,.75)"'
+      +' text-anchor="middle">&#9733;</text></svg>';
+  }
+  function inject(){
+    var ring=document.getElementById('s3d-ring');
+    if(!ring) return;
+    var items=ring.querySelectorAll('.s3d-ring-item');
+    for(var i=0;i<items.length;i++){
+      var it=items[i];
+      if(it.querySelector('img')) continue;
+      it.classList.remove('placeholder');
+      it.innerHTML='<img alt="Photo '+(i+1)+'">';
+      var img=it.querySelector('img');
+      if(img) img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg(i));
+    }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){setTimeout(inject,150);});
+  else setTimeout(inject,150);
+  setTimeout(inject,600);
+  setTimeout(inject,1500);
+})();
+</script>
+</body>
+</html>
